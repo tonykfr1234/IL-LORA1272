@@ -1,0 +1,61 @@
+name: PHP gateway integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  php-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Generate disposable configuration
+        run: |
+          python3 scripts/init_env.py
+          # Values are generated solely for this isolated CI database.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for line in Path('.env').read_text().splitlines():
+                  if not line or line.startswith('#'):
+                      continue
+                  name, value = line.split('=', 1)
+                  if name != 'APP_PORT':
+                      print('::add-mask::' + value)
+                  output.write(line + '\n')
+          PY
+      - name: Client and dashboard compatibility tests
+        run: |
+          python3 tests/test_gateway_clients.py
+          node tests/dashboard.cjs
+      - name: Build and start the exact deployment images
+        run: |
+          docker compose config --quiet
+          docker compose up --build --wait --wait-timeout 180
+      - name: Verify patched runtime and PHP syntax
+        run: |
+          docker compose exec -T web php -r 'if (PHP_VERSION !== "8.4.27" || !extension_loaded("mysqli")) { exit(1); } echo PHP_VERSION, PHP_EOL;'
+          docker compose exec -T web sh -c 'find /var/www/html -name "*.php" -print0 | xargs -0 -n1 php -l'
+      - name: Fresh database API and dashboard tests
+        run: python3 tests/integration.py --disposable-db
+      - name: Import and migrate the original 2017 database
+        run: |
+          # This is the disposable CI volume, never a deployed/user database.
+          printf 'DROP TABLE IoTTable;\n' | docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot loragateway'
+          docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot loragateway' < LoRa-Gateway/Gateway/MySQL/IoTTable.sql
+          docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -NB loragateway -e "SELECT * FROM IoTTable ORDER BY Id"' > "$RUNNER_TEMP/legacy-before.tsv"
+          docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot loragateway' < deploy/migrate.sql
+          docker compose exec -T db sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -uroot -NB loragateway -e "SELECT * FROM IoTTable ORDER BY Id"' > "$RUNNER_TEMP/legacy-after.tsv"
+          diff -u "$RUNNER_TEMP/legacy-before.tsv" "$RUNNER_TEMP/legacy-after.tsv"
+          test "$(wc -l < "$RUNNER_TEMP/legacy-after.tsv")" -eq 51
+      - name: Migrated database API and dashboard tests
+        run: python3 tests/integration.py --disposable-db
+      - name: Stop disposable containers
+        if: always()
+        run: docker compose down --volumes --remove-orphans
