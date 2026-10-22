@@ -1,5 +1,8 @@
-<html>
+<!doctype html>
+<html lang="en">
   <head>
+  <meta charset="utf-8">
+  <title>iFrogLab LoRa Gateway Charts</title>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
    <script type="text/javascript">
@@ -23,9 +26,10 @@
       function FunCharRedraw(){　　　　　　　　　　　　　　　　　　　　　// 定時處理畫面
           $.post( "AjaxIoT.php?action=list", function(data) {　　//　取的AjaxIoT.php資料庫的資料
               var KeyName=new Array();
-              var obj = JSON.parse(data);
+              var obj = typeof data === 'string' ? JSON.parse(data) : data;
               if(obj["Result"]=="OK"){            　　 　　　　　　//　查詢資料是否回傳成功
                 if(obj.TotalRecordCount>0){
+                    obj.Records = obj.Records.slice().reverse();
                     counter1=obj.TotalRecordCount;  　　　　　　　　// 回傳的筆數
                     for (var i = 0; i < counter1; i++) {          // 取的所有的  KeyName
                       var tKeyName = obj["Records"][i]["KeyName"];
@@ -236,9 +240,9 @@
         if(tlen>=1){
           for(i=(tlen-1);i>=0;i--){
             var i_msg=iDataArray[i].KeyName+","+iDataArray[i].Data+","+iDataArray[i].Datetime;
-            var t1=$( "#chart_div_text" ).html()
-            var t2=i_msg+"<br>"+t1.substring(0, 1000);        // 限制文字長度1000
-            $( "#chart_div_text").html(t2)
+            var t1=$( "#chart_div_text" ).text()
+            var t2=i_msg+"\n"+t1.substring(0, 1000);        // 限制文字長度1000
+            $( "#chart_div_text").text(t2)
           }
         }
       }
@@ -287,7 +291,7 @@
        function FunCharRedraw2(){
             $.post( "AjaxIoT.php?action=list", function( data ) {
         var maxCount=50;
-                var obj = JSON.parse(data);
+                var obj = typeof data === 'string' ? JSON.parse(data) : data;
                 if(obj.TotalRecordCount>0){
                     var xCount=0;
                     var yCount=0;
@@ -350,18 +354,6 @@
         });
         }
 
-       function showUser(value1){
-       	 $.post( "AjaxIoT.php?action=savefrequency&frequency="+value1, function(data) {　　//　取的AjaxIoT.php資料庫的資料
-              var KeyName=new Array();
-              var obj = JSON.parse(data);
-              if(obj["Result"]=="OK"){            　　 　　　　　　//　查詢資料是否回傳成功
-                    	str1=" you selected LoRa Frequency is "+value1+" mHz, please restart the gateway for this Frequency, next time LoRa  Frequency is "+obj["Records"]+" mHz";
-       	alert(str1);
-
-              }
-          });
-       }
-
     </script>
   </head>
   <body>
@@ -372,16 +364,7 @@
      <div id="gauge_div" style="width: 100%;height: 200px;   "></div>
      <div id="chart_div" style="width: 100%; height: 200px;"></div>
     <div id="bar_div_latest" style="width: 100%; height: 200px;"></div>
-    <div id="chart_div_text" style="width: 100%; "></div>
-        <div id="div_setup" style="width: 100%;  ">
-    LoRa Frequency
-	<form>
-	<select name="users" onchange="showUser(this.value)">
-	  <option value="915.00">915.00</option> 
-	  <option value="920.00">920.00</option>
-	  </select>
-	</form>
-	mHz
-	</div>
+    <div id="chart_div_text" style="width: 100%; white-space: pre-wrap;"></div>
+    <p>LoRa frequency is configured with the Python gateway frequency argument. Restart the bridge after changing it.</p>
   </body>
 </html>

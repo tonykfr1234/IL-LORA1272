@@ -178,7 +178,6 @@ class LoRa:
         return array2
 
     def FunArrayToHexString_v2(self,array1):
-        #urlData = "/AjaxIoT.php?action=insertByAPIKey&KeyName=%s&Data=%d&Datatype=1&APIKey=iloveifroglab" % (t1, x1);
         t1=len(array1)
         str2=" "
         for i in range(t1-1):

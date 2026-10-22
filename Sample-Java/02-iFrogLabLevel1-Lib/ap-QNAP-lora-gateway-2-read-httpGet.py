@@ -10,10 +10,7 @@
 # * UART,             RX         ,UART_RX  Pin 7
 # * UART,             TX         ,UART_TX  Pin 8
 
-import ifroglab
 import time
-import serial
-import httplib
 
 
 def Fun_CRC(data):
@@ -22,23 +19,68 @@ def Fun_CRC(data):
         crc=crc^i
     return crc
 
-# Fun_HTTPGet("www.powenko.com","/download_release/get.php?name=powenko&password=12345")
-def Fun_HTTPGet(iURL,iURLPath):
-   httpClient = None
-   try:
-        response = httplib.HTTPConnection(iURL)  #"www.powenko.com")
-        response.request("GET", iURLPath)   #"/download_release/get.php?name=powenko&password=12345")
-        r1 = response.getresponse()
-        print(r1.status, r1.reason)
-        data1 = r1.read()
-        print(data1)
-   except Exception, e:
-        print(e)
-   finally:
-        if httpClient:
-           httpClient.close()
+# BEGIN HTTP API ADAPTER (Python 2.7 / Python 3 compatible)
+import json
+import os
+try:
+    import httplib as http_client
+    from urlparse import urlsplit
+    from urllib import urlencode
+except ImportError:
+    import http.client as http_client
+    from urllib.parse import urlsplit, urlencode
+
+
+def _api_settings():
+    api_key = os.environ.get("IOT_API_KEY", "")
+    if len(api_key) < 32 or any(ord(ch) < 33 or ord(ch) > 126 for ch in api_key):
+        raise RuntimeError("Set IOT_API_KEY to the server's 32+ character ASCII key before starting the radio.")
+    try:
+        endpoint = urlsplit(os.environ.get("IOT_API_URL", "http://127.0.0.1:8080/AjaxIoT.php"))
+        if (endpoint.scheme not in ("http", "https") or not endpoint.hostname
+                or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment):
+            raise ValueError("Invalid endpoint")
+        port = endpoint.port
+        if port is not None and not 1 <= port <= 65535:
+            raise ValueError("Invalid port")
+        if any(ord(ch) < 33 or ord(ch) > 126 for ch in endpoint.netloc + endpoint.path):
+            raise ValueError("Invalid endpoint characters")
+    except ValueError:
+        raise RuntimeError("IOT_API_URL must be an HTTP(S) endpoint without credentials, query, or fragment.")
+    return endpoint, api_key
+
+
+def Fun_HTTPPost(fields):
+    endpoint, api_key = _api_settings()
+    connection = None
+    try:
+        connection_type = http_client.HTTPSConnection if endpoint.scheme == "https" else http_client.HTTPConnection
+        connection = connection_type(endpoint.hostname, endpoint.port, timeout=10)
+        connection.request("POST", endpoint.path or "/", urlencode(fields), {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "X-API-Key": api_key,
+        })
+        response = connection.getresponse()
+        body = response.read()
+        if not 200 <= response.status < 300:
+            raise RuntimeError("Gateway API returned HTTP %d." % response.status)
+        try:
+            result = json.loads(body.decode("utf-8"))
+        except (ValueError, UnicodeError):
+            raise RuntimeError("Gateway API returned invalid JSON.")
+        if not isinstance(result, dict) or result.get("Result") != "OK":
+            raise RuntimeError("Gateway API did not accept the sensor record.")
+        return result
+    finally:
+        if connection is not None:
+            connection.close()
+# END HTTP API ADAPTER
+
 
 def Fun_main():
+    _api_settings()  # Validate credentials before importing/initializing the radio.
+    import ifroglab
     LoRa = ifroglab.LoRa()
 
     # 打開Port
@@ -87,16 +129,15 @@ def Fun_main():
             print("data[3]=%s,  Hex->%s"%(data[3],data[3].encode('hex')))                                                                                                       
             print("data[4]=%s,  Hex->%s"%(data[4],data[4].encode('hex')))
             x1=(int(data[3].encode('hex'),16)*256)+int(data[4].encode('hex'),16)
-            urlData="/ICBlock/web/AjaxIoT.php?action=insertByAPIKey&KeyName=x&Data=%d&Datatype=1&APIKey=iloveifroglab"%x1;
-            Fun_HTTPGet("127.0.0.1",urlData)  # 上傳資料
+            Fun_HTTPPost({"action": "insertByAPIKey", "KeyName": "x",
+                          "Data": x1, "Datatype": "1"})
             y1=(int(data[5].encode('hex'),16)*256)+int(data[6].encode('hex'),16)
-            urlData="/ICBlock/web/AjaxIoT.php?action=insertByAPIKey&KeyName=y&Data=%d&Datatype=1&APIKey=iloveifroglab"%y1;
-            Fun_HTTPGet("127.0.0.1",urlData)  # 上傳資料
+            Fun_HTTPPost({"action": "insertByAPIKey", "KeyName": "y",
+                          "Data": y1, "Datatype": "1"})
             z1=(int(data[7].encode('hex'),16)*256)+int(data[8].encode('hex'),16)
-            urlData="/ICBlock/web/AjaxIoT.php?action=insertByAPIKey&KeyName=z&Data=%d&Datatype=1&APIKey=iloveifroglab"%z1;
-            Fun_HTTPGet("127.0.0.1",urlData)  # 上傳資料
+            Fun_HTTPPost({"action": "insertByAPIKey", "KeyName": "z",
+                          "Data": z1, "Datatype": "1"})
 
-            #http://localhost/ICBlock/web/AjaxIoT.php?action=insertByAPIKey&KeyName=y&Data=3&Datatype=1&APIKey=iloveifroglab
         time.sleep(1)  
 
 
@@ -106,6 +147,7 @@ def Fun_main():
 
 
 # Start Main Program
-Fun_main()
+if __name__ == "__main__":
+    Fun_main()
 
 

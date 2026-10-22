@@ -1,6 +1,7 @@
 
-完整的Docker Container 可以在這裡下載　https://hub.docker.com/r/ifroglab/loragateway/
-使用教學請看這裡 http://www.ifroglab.com/?p=7665
+PHP 閘道已改用 PHP 8.4.27／mysqli 與 MariaDB 11.4.13，請使用本儲存庫根目錄的 `compose.yaml`。
+安裝、舊資料遷移、API key 與測試方式請見 [更新後的使用說明](../docs/PHP_UPGRADE_zh-TW.md)。
+舊廠商容器僅屬歷史示範，本分支不再建議使用；下方為原始硬體介紹。
 
 
 
